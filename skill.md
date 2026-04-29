@@ -33,8 +33,13 @@ Walk the user through setup:
 1. **Get a Zendesk API token.**
    - In Zendesk: Admin Center → Apps and integrations → Zendesk API → Token access → Add API token. Label it `claude-code-<your-name>`.
    - **If you don't see that option:** API token generation is admin-gated. Either (a) ask a Zendesk admin to enable token access for your account, or (b) ask them to grant you admin/agent role with token-generation permission. Do **not** share someone else's token — tokens inherit the owner's identity, so audit logs and revocation get tangled.
-2. `cp .env.example .env` and fill in `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, and `ZENDESK_TEAM_TAG` (the tag that scopes to your team — default `web_app`; ask your team if unsure).
-3. Re-run.
+2. `cp .env.example .env` and fill in `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, and `ZENDESK_TEAM_TAG`.
+3. **Pick a `ZENDESK_TEAM_TAG` from tags that actually exist in your Zendesk.** Run this to see candidates:
+   ```bash
+   ./zd get tags.json | jq -r '.tags | sort_by(-.count) | .[0:50] | .[] | "\(.count)\t\(.name)"'
+   ```
+   Pick the tag that scopes to your team's surface — e.g. `web_app`, `platform_type_mac`, `ipad`, `audio`. If you're not sure which is right for your team, ask a teammate or your support lead which tag they consistently use to triage your area.
+4. Re-run.
 
 Stop. Don't continue until auth succeeds.
 
@@ -43,9 +48,17 @@ Stop. Don't continue until auth succeeds.
 ```bash
 SUBDOMAIN=$(grep ^ZENDESK_SUBDOMAIN .env | cut -d= -f2)
 TEAM_TAG=$(grep ^ZENDESK_TEAM_TAG .env | cut -d= -f2)
-TEAM_TAG=${TEAM_TAG:-web_app}   # default if unset
 ```
 
+If `TEAM_TAG` is empty, **stop** and tell the user:
+
+> `ZENDESK_TEAM_TAG` is not set in your `.env`. Run this to see which tags exist in your Zendesk and pick one that scopes to your team:
+> ```
+> ./zd get tags.json | jq -r '.tags | sort_by(-.count) | .[0:50] | .[] | "\(.count)\t\(.name)"'
+> ```
+> Common picks: `web_app`, `platform_type_mac`, `ipad`, `audio`. Set the chosen tag in `.env` and re-run.
+
+Otherwise:
 - Use `https://${SUBDOMAIN}.zendesk.com/agent/tickets/<id>` for ticket links — agent view, not end-user view.
 - Use `tags:${TEAM_TAG}` in every search filter except drill-down (§D).
 

@@ -33,7 +33,9 @@ Done. Next steps:
    - ZENDESK_SUBDOMAIN     (the prefix of <subdomain>.zendesk.com)
    - ZENDESK_EMAIL         (your admin email)
    - ZENDESK_API_TOKEN     (Admin Center → Apps & integrations → Zendesk API → Token access)
-   - ZENDESK_TEAM_TAG      (the tag that scopes searches to your team — e.g. web_app)
+   - ZENDESK_TEAM_TAG      (the tag that scopes searches to your team — REQUIRED, no default)
+                          discover with: ./zd get tags.json | jq -r '.tags | sort_by(-.count) | .[0:50] | .[] | "\(.count)\t\(.name)"'
+                          common picks: web_app, platform_type_mac, ipad, audio
 
    If you don't see "Token access" in Admin Center, your account isn't admin
    or token generation isn't enabled for agents. Ask a Zendesk admin.

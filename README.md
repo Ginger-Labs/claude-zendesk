@@ -42,7 +42,11 @@ If you don't see that option, API token generation is admin-gated. Ask a Zendesk
 - `ZENDESK_SUBDOMAIN` — the prefix of `<subdomain>.zendesk.com`
 - `ZENDESK_EMAIL` — your admin email
 - `ZENDESK_API_TOKEN` — your personal token
-- `ZENDESK_TEAM_TAG` — the tag that scopes searches to your team (default `web_app`). Find candidates with `./zd get tags.json | jq '.tags | sort_by(-.count) | .[0:50]'`.
+- `ZENDESK_TEAM_TAG` — the tag that scopes searches to your team. **No default.** Common picks at Ginger Labs: `web_app`, `platform_type_mac`, `ipad`, `audio`. Find candidates in your Zendesk with:
+  ```
+  ./zd get tags.json | jq -r '.tags | sort_by(-.count) | .[0:50] | .[] | "\(.count)\t\(.name)"'
+  ```
+  If you're not sure which tag is right for your team, ask a teammate or your support lead which tag they consistently use to triage your area.
 
 ## Files
 
