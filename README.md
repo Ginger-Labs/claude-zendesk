@@ -70,4 +70,4 @@ If the tag taxonomy in your Zendesk instance is different, you may also want to 
 
 ## Status
 
-Pilot. Built quickly to learn what's actually useful before investing in a polished version. Feedback welcome — open an issue.
+Pilot. Built quickly to learn what's actually useful before investing in a polished version. Feedback welcome, open a PR!
