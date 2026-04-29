@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# zd — thin Zendesk REST wrapper.
+#
+# Auth via env vars (sourced from zendesk/.env if present):
+#   ZENDESK_SUBDOMAIN   e.g. "gingerlabs" (the prefix of <subdomain>.zendesk.com)
+#   ZENDESK_EMAIL       your admin email
+#   ZENDESK_API_TOKEN   API token (Admin Center → Apps & integrations → Zendesk API)
+#
+# Usage:
+#   zd get  <path>                         # GET /api/v2/<path>
+#   zd search '<zendesk search query>'     # paginates, prints JSON results array
+#   zd ticket <id>                         # full ticket + comments
+#   zd recent <hours>                      # tickets created in last N hours
+#   zd raw  <method> <path> [body-file]    # escape hatch
+#
+# Examples:
+#   zd search 'type:ticket created>7days status<solved tags:bug'
+#   zd ticket 12345
+#   zd recent 24
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$SCRIPT_DIR/.env" ]] && set -a && . "$SCRIPT_DIR/.env" && set +a
+
+: "${ZENDESK_SUBDOMAIN:?ZENDESK_SUBDOMAIN not set}"
+: "${ZENDESK_EMAIL:?ZENDESK_EMAIL not set}"
+: "${ZENDESK_API_TOKEN:?ZENDESK_API_TOKEN not set}"
+
+BASE="https://${ZENDESK_SUBDOMAIN}.zendesk.com/api/v2"
+AUTH="${ZENDESK_EMAIL}/token:${ZENDESK_API_TOKEN}"
+
+_curl() {
+  # Retries on 429 using Retry-After.
+  local method="$1" url="$2" body_file="${3:-}"
+  local args=(-sS -u "$AUTH" -H "Content-Type: application/json" -X "$method")
+  [[ -n "$body_file" ]] && args+=(--data "@$body_file")
+  local attempt=0
+  while :; do
+    local resp http
+    resp="$(curl -w '\n__HTTP__%{http_code}' "${args[@]}" "$url")"
+    http="${resp##*__HTTP__}"
+    body="${resp%__HTTP__*}"
+    if [[ "$http" == "429" ]]; then
+      attempt=$((attempt+1))
+      if (( attempt > 5 )); then echo "rate-limited (5x), giving up" >&2; exit 1; fi
+      sleep $((2 ** attempt))
+      continue
+    fi
+    if [[ "$http" =~ ^2 ]]; then printf '%s' "$body"; return 0; fi
+    echo "HTTP $http: $body" >&2; return 1
+  done
+}
+
+cmd_get()    { _curl GET  "$BASE/${1#/}"; }
+cmd_raw()    { _curl "$1" "$BASE/${2#/}" "${3:-}"; }
+cmd_ticket() { _curl GET  "$BASE/tickets/$1.json?include=comment_count,metric_sets"; }
+
+cmd_search() {
+  local query="$1" cursor="" url
+  local first=1
+  printf '['
+  while :; do
+    url="$BASE/search.json?query=$(printf %s "$query" | jq -sRr @uri)&per_page=100"
+    [[ -n "$cursor" ]] && url="${url}&page=${cursor}"
+    local page; page="$(_curl GET "$url")"
+    local results; results="$(printf '%s' "$page" | jq -c '.results[]')"
+    while IFS= read -r row; do
+      [[ -z "$row" ]] && continue
+      (( first )) || printf ','
+      first=0
+      printf '%s' "$row"
+    done <<<"$results"
+    local next; next="$(printf '%s' "$page" | jq -r '.next_page // empty')"
+    [[ -z "$next" ]] && break
+    cursor=$(( ${cursor:-1} + 1 ))
+    [[ "$cursor" -gt 10 ]] && break  # search caps at 1000 results / 10 pages
+  done
+  printf ']\n'
+}
+
+cmd_recent() {
+  local hours="${1:-24}"
+  local since; since="$(date -u -v-"${hours}"H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "${hours} hours ago" +%Y-%m-%dT%H:%M:%SZ)"
+  cmd_search "type:ticket created>${since}"
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  get)     cmd_get    "$@" ;;
+  raw)     cmd_raw    "$@" ;;
+  ticket)  cmd_ticket "$@" ;;
+  search)  cmd_search "$@" ;;
+  recent)  cmd_recent "$@" ;;
+  ""|-h|--help) sed -n '2,20p' "$0" ;;
+  *) echo "unknown command: $cmd" >&2; exit 2 ;;
+esac
